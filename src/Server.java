@@ -1,21 +1,24 @@
 import java.io.*;
 import java.net.*;
 
-public class Server {
-    public static void main(String[] args) throws Exception {
-        String clientSentence; 
-        String capitalizedSentence; 
-        ServerSocket welcomeSocket = new ServerSocket(6789);
+class Server{
+    public static void main(String argv[]) throws Exception{
+    String clientSentence;
+    String capitalizedSentence;
 
-        while (true) {
-            Socket connectionSocket = welcomeSocket.accept();
-            System.out.println("conectou");
-            BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
-            DataOutputStream  outToClient = new DataOutputStream(connectionSocket.getOutputStream());
-            clientSentence = inFromClient.readLine(); 
-            capitalizedSentence = clientSentence.toUpperCase() + '\n';
-            outToClient.writeBytes(capitalizedSentence); 
-        }
-        
+    ServerSocket welcomeSocket = new ServerSocket(6789);
+
+    while(true) {
+
+      Socket connectionSocket = welcomeSocket.accept();
+      System.out.println("Deu bom!!");
+      BufferedReader inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream())); 
+      DataOutputStream outToClient = new DataOutputStream(connectionSocket.getOutputStream());
+      clientSentence = inFromClient.readLine();
+      capitalizedSentence = clientSentence.toUpperCase() + '\n';
+      outToClient.writeBytes(capitalizedSentence); 
+    
+      }
     }
+  
 }
