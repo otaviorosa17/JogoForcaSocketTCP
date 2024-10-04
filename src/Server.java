@@ -1,106 +1,132 @@
 import java.io.*;
 import java.net.*;
-import java.util.HashMap;
+import java.text.Normalizer;
+import java.util.concurrent.ConcurrentHashMap;
 
 class Server {
-    private static HashMap<SocketAddress, String> players = new HashMap<>();
-    private static int playerCount = 0;
+    private static ConcurrentHashMap<String, PlayerHandler> players = new ConcurrentHashMap<>();
     private static String wordToGuess = null;
     private static StringBuilder currentGuessState;
     private static int attemptsLeft = 6;
     private static boolean gameInProgress = false;
+    private static String wordChooser = null;
 
     public static void main(String argv[]) throws Exception {
         ServerSocket welcomeSocket = new ServerSocket(6789);
-
         System.out.println("Servidor iniciado, aguardando jogadores...");
 
         while (true) {
-            // Aceitar uma nova conexão
             Socket connectionSocket = welcomeSocket.accept();
-            SocketAddress playerAddress = connectionSocket.getRemoteSocketAddress();
-            
-            // Atribuir Player 1 ou Player 2
-            playerCount++;
-            String playerId = "Player " + playerCount;
-            players.put(playerAddress, playerId);
-            System.out.println(playerId + " conectado: " + playerAddress);
 
-            // Criar uma nova thread para o cliente
-            PlayerHandler handler = new PlayerHandler(connectionSocket, playerId);
+            // Configuração de Keep-Alive
+            connectionSocket.setKeepAlive(true);
+
+            PlayerHandler handler = new PlayerHandler(connectionSocket);
             new Thread(handler).start();
-
-            // Se mais de 2 jogadores tentarem se conectar, você pode impedir novas conexões
-            if (playerCount > 2) {
-                System.out.println("Apenas dois jogadores são permitidos.");
-                connectionSocket.close();
-            }
         }
     }
 
-    // Classe para lidar com cada jogador em uma thread separada
+    // Classe para lidar com cada jogador
     static class PlayerHandler implements Runnable {
         private Socket socket;
         private String playerId;
+        private String playerName;
         private BufferedReader inFromClient;
         private DataOutputStream outToClient;
+        private boolean isConnected;
 
-        public PlayerHandler(Socket socket, String playerId) {
-            this.socket = socket;
-            this.playerId = playerId;
-        }
+        public PlayerHandler(Socket socket) throws IOException {
+          this.socket = socket;
+          this.isConnected = true;
+          this.inFromClient = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+          this.outToClient = new DataOutputStream(socket.getOutputStream());
+          
+          // Envia a mensagem e força o envio com flush
+          outToClient.writeBytes("Digite seu nome de jogador: ");
+          outToClient.flush(); // Garante que a mensagem seja enviada imediatamente
+      
+          this.playerName = inFromClient.readLine(); // Agora o jogador pode digitar o nome após a mensagem
+      }
+      
 
         @Override
         public void run() {
             try {
-                inFromClient = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                outToClient = new DataOutputStream(socket.getOutputStream());
+                
+                autenticarJogador(playerName);
 
                 String clientSentence;
 
-                // Loop para receber mensagens do cliente
-                while ((clientSentence = inFromClient.readLine()) != null) {
+                while (isConnected && (clientSentence = inFromClient.readLine()) != null) {
+                    clientSentence = removeAcentos(clientSentence).toLowerCase();
                     System.out.println(playerId + " enviou: " + clientSentence);
 
-                    if (playerId.equals("Player 1") && clientSentence.equalsIgnoreCase("forca")) {
+                    if (!gameInProgress && clientSentence.equals("forca")) {
                         iniciarForca();
-                    } else if (gameInProgress && playerId.equals("Player 2")) {
+                    } else if (gameInProgress && !playerId.equals(wordChooser)) {
                         processarTentativa(clientSentence);
                     } else {
                         outToClient.writeBytes("Comando invalido ou jogo em progresso!\n");
                     }
                 }
             } catch (IOException e) {
-                System.out.println("Erro na comunicação com " + playerId);
-            } finally {
-                try {
-                    socket.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                System.out.println(playerId + " desconectado.");
+                this.isConnected = false;
             }
         }
 
-        // Iniciar o jogo da forca
-        private void iniciarForca() throws IOException {
-            outToClient.writeBytes("Você escolheu o jogo da Forca! Digite a palavra a ser adivinhada:\n");
-            wordToGuess = inFromClient.readLine().toLowerCase();
-            currentGuessState = new StringBuilder("_".repeat(wordToGuess.length()));
-            attemptsLeft = 6;
-            gameInProgress = true;
+        private void autenticarJogador(String nome) throws IOException {
 
-            System.out.println("Palavra escolhida por Player 1: " + wordToGuess);
-            // Notificar o Player 2 que o jogo começou
-            notificarOutroJogador("O jogo da Forca começou! Tente adivinhar a palavra:\n" + currentGuessState.toString());
+          nome = removeAcentos(nome).toLowerCase(); // Remove acentos e padroniza o nome em minúsculas
+      
+          if (players.containsKey(nome)) {
+              this.playerId = nome;
+              players.get(nome).reconnect(socket); // Reestabelece a conexão
+              outToClient.writeBytes("Reconexao bem-sucedida. Bem-vindo de volta, " + nome + "!\n");
+              System.out.println(playerId + " reconectado.");
+          } else {
+              this.playerId = nome;
+              players.put(nome, this); // Adiciona o novo jogador ao mapa de jogadores
+              outToClient.writeBytes("Bem-vindo ao jogo, " + nome + "!\n"); // Exibe a mensagem de boas-vindas
+              System.out.println(playerId + " conectado.");
+          }
+      }
+      
+
+        public void reconnect(Socket newSocket) throws IOException {
+            this.socket = newSocket;
+            this.inFromClient = new BufferedReader(new InputStreamReader(newSocket.getInputStream()));
+            this.outToClient = new DataOutputStream(newSocket.getOutputStream());
+            this.isConnected = true;
         }
 
-        // Processar tentativas do jogador 2
+        private void iniciarForca() throws IOException {
+            if (!gameInProgress) {
+                outToClient.writeBytes("Voce escolheu o jogo da Forca! Digite a palavra a ser adivinhada:\n");
+                wordToGuess = removeAcentos(inFromClient.readLine().toLowerCase());
+
+                if (wordToGuess == null || wordToGuess.isEmpty()) {
+                    outToClient.writeBytes("Erro: Palavra invalida.\n");
+                    return;
+                }
+
+                wordChooser = playerId;
+                currentGuessState = new StringBuilder("_".repeat(wordToGuess.length()));
+                attemptsLeft = 6;
+                gameInProgress = true;
+
+                System.out.println("Palavra escolhida por " + playerId + ": " + wordToGuess);
+                notificarOutroJogador("O jogo da Forca comecou! Tente adivinhar a palavra:\n" + currentGuessState, obterOutroJogador());
+            } else {
+                outToClient.writeBytes("Jogo ja esta em progresso!\n");
+            }
+        }
+
         private void processarTentativa(String tentativa) throws IOException {
             if (tentativa.length() == 1) {
-                char letra = tentativa.toLowerCase().charAt(0);
+                char letra = tentativa.charAt(0);
                 boolean letraEncontrada = false;
 
-                // Atualizar o estado da palavra
                 for (int i = 0; i < wordToGuess.length(); i++) {
                     if (wordToGuess.charAt(i) == letra) {
                         currentGuessState.setCharAt(i, letra);
@@ -111,42 +137,48 @@ class Server {
                 if (!letraEncontrada) {
                     attemptsLeft--;
                     outToClient.writeBytes("Letra incorreta! Tentativas restantes: " + attemptsLeft + "\n");
-                    notificarOutroJogador(playerId + " errou a letra '" + letra + "'. Tentativas restantes: " + attemptsLeft);
+                    notificarOutroJogador(playerId + " errou a letra '" + letra + "'. Tentativas restantes: " + attemptsLeft, wordChooser);
                 } else {
-                    outToClient.writeBytes("Letra correta! " + currentGuessState.toString() + "\n");
-                    notificarOutroJogador(playerId + " acertou a letra '" + letra + "'. " + currentGuessState.toString());
+                    outToClient.writeBytes("Letra correta! " + currentGuessState + "\n");
+                    notificarOutroJogador(playerId + " acertou a letra '" + letra + "'. " + currentGuessState, wordChooser);
                 }
 
-                // Verificar se o jogo terminou
                 verificarFimDeJogo();
             } else {
                 outToClient.writeBytes("Por favor, tente uma letra por vez.\n");
             }
         }
 
-        // Verifica se o jogo terminou
         private void verificarFimDeJogo() throws IOException {
             if (currentGuessState.toString().equals(wordToGuess)) {
                 gameInProgress = false;
-                outToClient.writeBytes("Parabéns, você ganhou! A palavra era: " + wordToGuess + "\n");
-                notificarOutroJogador(playerId + " ganhou o jogo! A palavra era: " + wordToGuess);
+                outToClient.writeBytes("Parabens, voce ganhou! A palavra era: " + wordToGuess + "\n");
+                notificarOutroJogador(playerId + " ganhou o jogo! A palavra era: " + wordToGuess, wordChooser);
             } else if (attemptsLeft <= 0) {
                 gameInProgress = false;
-                outToClient.writeBytes("Você perdeu! A palavra era: " + wordToGuess + "\n");
-                notificarOutroJogador("O jogo terminou! A palavra era: " + wordToGuess);
+                outToClient.writeBytes("Voce perdeu! A palavra era: " + wordToGuess + "\n");
+                notificarOutroJogador("O jogo terminou! A palavra era: " + wordToGuess, wordChooser);
             }
         }
 
-        // Notifica o outro jogador
-        private void notificarOutroJogador(String mensagem) throws IOException {
-            for (SocketAddress address : players.keySet()) {
-                if (!players.get(address).equals(playerId)) {
-                    Socket otherPlayerSocket = new Socket(address.toString(), 6789);
-                    DataOutputStream otherOut = new DataOutputStream(otherPlayerSocket.getOutputStream());
-                    otherOut.writeBytes(mensagem + "\n");
-                    otherPlayerSocket.close();
+        private void notificarOutroJogador(String mensagem, String outroPlayerId) throws IOException {
+            PlayerHandler outroPlayer = players.get(outroPlayerId);
+            if (outroPlayer != null && outroPlayer.isConnected) {
+                outroPlayer.outToClient.writeBytes(mensagem + "\n");
+            }
+        }
+
+        private String obterOutroJogador() {
+            for (String playerId : players.keySet()) {
+                if (!playerId.equals(this.playerId)) {
+                    return playerId;
                 }
             }
+            return null;
+        }
+
+        private String removeAcentos(String str) {
+            return Normalizer.normalize(str, Normalizer.Form.NFD).replaceAll("[^\\p{ASCII}]", "");
         }
     }
 }
