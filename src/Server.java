@@ -36,27 +36,24 @@ class Server {
         private boolean isConnected;
 
         public PlayerHandler(Socket socket) throws IOException {
-          this.socket = socket;
-          this.isConnected = true;
-          this.inFromClient = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-          this.outToClient = new DataOutputStream(socket.getOutputStream());
-          
-          // Envia a mensagem e força o envio com flush
-          outToClient.writeBytes("Digite seu nome de jogador: ");
-          outToClient.flush(); // Garante que a mensagem seja enviada imediatamente
-      
-          this.playerName = inFromClient.readLine(); // Agora o jogador pode digitar o nome após a mensagem
-      }
-      
+            this.socket = socket;
+            this.isConnected = true;
+            this.outToClient = new DataOutputStream(socket.getOutputStream());
+            this.inFromClient = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
+            // Garante que o cliente verá "Digite seu nome de jogador:" primeiro
+            outToClient.writeBytes("Digite seu nome de jogador: \n");
+            outToClient.flush();
+
+            // Espera o nome do jogador
+            this.playerName = inFromClient.readLine();
+            autenticarJogador(playerName);
+        }
 
         @Override
         public void run() {
             try {
-                
-                autenticarJogador(playerName);
-
                 String clientSentence;
-
                 while (isConnected && (clientSentence = inFromClient.readLine()) != null) {
                     clientSentence = removeAcentos(clientSentence).toLowerCase();
                     System.out.println(playerId + " enviou: " + clientSentence);
@@ -76,23 +73,26 @@ class Server {
         }
 
         private void autenticarJogador(String nome) throws IOException {
+            nome = removeAcentos(nome).toLowerCase();
 
-          nome = removeAcentos(nome).toLowerCase(); // Remove acentos e padroniza o nome em minúsculas
-      
-          if (players.containsKey(nome)) {
-              this.playerId = nome;
-              players.get(nome).reconnect(socket); // Reestabelece a conexão
-              outToClient.writeBytes("Reconexao bem-sucedida. Bem-vindo de volta, " + nome + "!\n");
-              System.out.println(playerId + " reconectado.");
-          } else {
-              this.playerId = nome;
-              players.put(nome, this); // Adiciona o novo jogador ao mapa de jogadores
-              outToClient.writeBytes("Bem-vindo ao jogo, " + nome + "!\n"); // Exibe a mensagem de boas-vindas
-              System.out.println(playerId + " conectado.");
-          }
-      }
-      
+            if (players.containsKey(nome)) {
+                this.playerId = nome;
+                players.get(nome).reconnect(socket); // Reestabelece a conexão
+                outToClient.writeBytes("Reconexao bem-sucedida. Bem-vindo de volta, " + nome + "!\n");
+                System.out.println(playerId + " reconectado.");
+            } else {
+                this.playerId = nome;
+                players.put(nome, this);
+                outToClient.writeBytes("Bem-vindo ao jogo, " + nome + "!\n");
+                System.out.println(playerId + " conectado.");
+            }
+        }
 
+        private String removeAcentos(String str) {
+            return Normalizer.normalize(str, Normalizer.Form.NFD).replaceAll("[^\\p{ASCII}]", "");
+        }
+
+        // ... Resto do código do servidor permanece o mesmo
         public void reconnect(Socket newSocket) throws IOException {
             this.socket = newSocket;
             this.inFromClient = new BufferedReader(new InputStreamReader(newSocket.getInputStream()));
@@ -103,25 +103,36 @@ class Server {
         private void iniciarForca() throws IOException {
             if (!gameInProgress) {
                 outToClient.writeBytes("Voce escolheu o jogo da Forca! Digite a palavra a ser adivinhada:\n");
+                outToClient.flush(); // Garante que a mensagem seja enviada imediatamente
+        
                 wordToGuess = removeAcentos(inFromClient.readLine().toLowerCase());
-
+        
                 if (wordToGuess == null || wordToGuess.isEmpty()) {
                     outToClient.writeBytes("Erro: Palavra invalida.\n");
+                    outToClient.flush();
                     return;
                 }
-
+        
                 wordChooser = playerId;
                 currentGuessState = new StringBuilder("_".repeat(wordToGuess.length()));
                 attemptsLeft = 6;
                 gameInProgress = true;
-
+        
                 System.out.println("Palavra escolhida por " + playerId + ": " + wordToGuess);
-                notificarOutroJogador("O jogo da Forca comecou! Tente adivinhar a palavra:\n" + currentGuessState, obterOutroJogador());
+                
+                // Notifica ambos os jogadores de que o jogo começou imediatamente
+                String mensagemInicio = "O jogo da Forca comecou! Tente adivinhar a palavra:\n" + currentGuessState + "\n";
+                outToClient.writeBytes(mensagemInicio);
+                outToClient.flush();
+                
+                // Notifica o outro jogador
+                notificarOutroJogador(mensagemInicio, obterOutroJogador());
             } else {
                 outToClient.writeBytes("Jogo ja esta em progresso!\n");
+                outToClient.flush();
             }
         }
-
+        
         private void processarTentativa(String tentativa) throws IOException {
             if (tentativa.length() == 1) {
                 char letra = tentativa.charAt(0);
@@ -175,10 +186,6 @@ class Server {
                 }
             }
             return null;
-        }
-
-        private String removeAcentos(String str) {
-            return Normalizer.normalize(str, Normalizer.Form.NFD).replaceAll("[^\\p{ASCII}]", "");
         }
     }
 }

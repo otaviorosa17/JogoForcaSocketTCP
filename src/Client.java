@@ -9,20 +9,27 @@ class Client {
         Thread listenThread = new Thread(new ListenFromServer(clientSocket));
         listenThread.start();
 
-        // Criar e iniciar a thread para enviar dados do cliente para o servidor
-        Thread sendThread = new Thread(new SendToServer(clientSocket));
-        sendThread.start();
+        // Enviar dados do cliente para o servidor
+        BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
+        DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+
+        while (true) {
+            // Enviar comando do cliente para o servidor
+            String sentence = inFromUser.readLine();
+            outToServer.writeBytes(sentence + '\n');
+            outToServer.flush(); // Garante que os dados sejam enviados imediatamente
+        }
     }
 }
 
 // Classe para escutar mensagens do servidor
 class ListenFromServer implements Runnable {
     private Socket socket;
-    
+
     public ListenFromServer(Socket socket) {
         this.socket = socket;
     }
-    
+
     @Override
     public void run() {
         try {
@@ -35,31 +42,6 @@ class ListenFromServer implements Runnable {
             }
         } catch (IOException e) {
             System.out.println("Conexao com o servidor foi perdida.");
-        }
-    }
-}
-
-// Classe para enviar mensagens do cliente para o servidor
-class SendToServer implements Runnable {
-    private Socket socket;
-    
-    public SendToServer(Socket socket) {
-        this.socket = socket;
-    }
-
-    @Override
-    public void run() {
-        try {
-            BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
-            DataOutputStream outToServer = new DataOutputStream(socket.getOutputStream());
-
-            while (true) {
-                // Enviar comando do cliente para o servidor
-                String sentence = inFromUser.readLine();
-                outToServer.writeBytes(sentence + '\n');
-            }
-        } catch (IOException e) {
-            System.out.println("Erro ao enviar mensagem para o servidor.");
         }
     }
 }
