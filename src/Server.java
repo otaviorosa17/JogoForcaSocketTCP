@@ -112,7 +112,7 @@ class Server {
                         chooser = this;
                         sendMessage("Voce e o escolhedor da palavra! Digite a palavra secreta:");
                         sendToGuessers("Outro jogador esta escolhendo a palavra...");
-                        wordToGuess = inFromClient.readLine().trim();
+                        wordToGuess = inFromClient.readLine().trim().toLowerCase();
                         while (players.size() < MIN_PLAYERS) {
                             try {
                                 sendMessage("Aguardando outro jogador...");
@@ -147,6 +147,7 @@ class Server {
 
         // Método para lidar com o palpite do jogador
         public void handleGuess(String guess) {
+            guess.toLowerCase();
             updateProgress(guess);
             if (wordToGuess == null) {
                 sendMessage("A palavra ainda nao foi escolhida pelo outro jogador, aguarde...");
