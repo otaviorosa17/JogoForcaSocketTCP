@@ -232,7 +232,7 @@ class Server {
             currentProgress = null;
             triesLeft = 5;
             guessedLetters.removeAll(guessedLetters);
-            wrongLetters.removeAll(guessedLetters);
+            wrongLetters.removeAll(wrongLetters);
             broadcastMessage("Jogo finalizado! Digite 'chooser' para uma nova rodada.");
         }
     }
