@@ -11,6 +11,8 @@ class Server {
     private static PlayerHandler chooser = null; // Jogador que escolhe a palavra
     private static int triesLeft = 5;
     private static List<String> guessedLetters = new ArrayList<>();
+    private static List<String> wrongLetters = new ArrayList<>();
+    
 
     public static void main(String[] args) throws Exception {
         ServerSocket welcomeSocket = new ServerSocket(6789);
@@ -63,6 +65,15 @@ class Server {
             }
         }
         guessedLetters.add(letter);
+        return true;
+    }
+    public static boolean addWrongLetter(String letter) {
+        for (String i : wrongLetters) {
+            if (i.contains(letter)) {
+                return false;
+            }
+        }
+        wrongLetters.add(letter);
         return true;
     }
     // Classe que gerencia cada jogador
@@ -153,29 +164,29 @@ class Server {
                 sendMessage("A palavra ainda nao foi escolhida pelo outro jogador, aguarde...");
                 return;
             }
-            if (wordToGuess.contains(guess)) {
-                broadcastMessage("Palpite correto. Tentativas Restantes: " + String.valueOf(triesLeft));
-                if (currentProgress.toString().equalsIgnoreCase(wordToGuess)) {
-                    broadcastMessage("O jogador " + playerName + " ganhou! A palavra era: " + wordToGuess);
-                    resetGame();
-                    return;
-                }
-            } else {
-                if (addGessedLetter(guess)) {
-                    triesLeft--;
-                    broadcastMessage("Palpite incorreto. Tentativas Restantes: " + String.valueOf(triesLeft));
-                    if (triesLeft == 0) {
-                        broadcastMessage("O jogador " + chooser.playerName + " ganhou! A palavra era: " + wordToGuess);
+            if (addGessedLetter(guess)) {
+                if (wordToGuess.contains(guess)) {
+                    broadcastMessage("Palpite correto. Tentativas Restantes: " + String.valueOf(triesLeft));
+                    if (currentProgress.toString().equalsIgnoreCase(wordToGuess)) {
+                        broadcastMessage("O jogador " + playerName + " ganhou! A palavra era: " + wordToGuess);
                         resetGame();
                         return;
                     }
-                }
-                else {
-                    sendMessage("Esta palavra ja foi palpitada");
-                }
-            }          
+                } else {
+                        triesLeft--;
+                        broadcastMessage("Palpite incorreto. Tentativas Restantes: " + String.valueOf(triesLeft));
+                        addWrongLetter(guess);
+                        if (triesLeft == 0) {
+                            broadcastMessage("O jogador " + chooser.playerName + " ganhou! A palavra era: " + wordToGuess);
+                            resetGame();
+                            return;
+                        }
+                    }
+            } else {
+                sendMessage("Esta letra ja foi palpitada");
+            }
             broadcastCurrentProgress();
-            String letrasPrint = String.join(", ", guessedLetters);
+            String letrasPrint = String.join(", ", wrongLetters);
             broadcastMessage("Letras erradas: " + letrasPrint);
         }
 
@@ -221,6 +232,7 @@ class Server {
             currentProgress = null;
             triesLeft = 5;
             guessedLetters.removeAll(guessedLetters);
+            wrongLetters.removeAll(guessedLetters);
             broadcastMessage("Jogo finalizado! Digite 'chooser' para uma nova rodada.");
         }
     }
