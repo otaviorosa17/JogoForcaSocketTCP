@@ -15,15 +15,35 @@ class Server {
     
 
     public static void main(String[] args) throws Exception {
-        ServerSocket welcomeSocket = new ServerSocket(6789);
-
-        System.out.println("Servidor iniciado. Aguardando jogadores...");
-
-        while (players.size() < MAX_PLAYERS) {
-            Socket connectionSocket = welcomeSocket.accept();
-            if (players.size() < MAX_PLAYERS) {
-                PlayerHandler player = new PlayerHandler(connectionSocket);
-                new Thread(player).start();
+        ServerSocket welcomeSocket = null;
+        try {
+            welcomeSocket = new ServerSocket(6789);
+    
+            System.out.println("Servidor iniciado. Aguardando jogadores...");
+    
+            while (players.size() < MAX_PLAYERS) {
+                Socket connectionSocket = welcomeSocket.accept();
+                if (players.size() < MAX_PLAYERS) {
+                    PlayerHandler player = new PlayerHandler(connectionSocket);
+                    new Thread(player).start();
+                }
+            }
+        }
+        catch (IOException e) {
+            // Tratamento de exceções de entrada/saída, como erro ao iniciar o servidor
+            System.err.println("Erro ao iniciar o servidor: " + e.getMessage());
+            e.printStackTrace();
+        }
+        finally {
+            // Garantir que o ServerSocket seja fechado ao final
+            if (welcomeSocket != null && !welcomeSocket.isClosed()) {
+                try {
+                    welcomeSocket.close();
+                    System.out.println("Servidor encerrado.");
+                } catch (IOException e) {
+                    System.err.println("Erro ao fechar o servidor: " + e.getMessage());
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -82,7 +102,6 @@ class Server {
         private BufferedReader inFromClient;
         private DataOutputStream outToClient;
         private String playerName;
-        private String otherPlayerName;
 
         public PlayerHandler(Socket socket) throws IOException {
             this.socket = socket;
@@ -123,7 +142,9 @@ class Server {
                         chooser = this;
                         sendMessage("Voce e o escolhedor da palavra! Digite a palavra secreta:");
                         sendToGuessers("Outro jogador esta escolhendo a palavra...");
-                        wordToGuess = inFromClient.readLine().trim().toLowerCase();
+                        wordToGuess = inFromClient.readLine();
+                        if (wordToGuess == null || wordToGuess.trim().isEmpty()) break;
+                        wordToGuess.trim().toLowerCase();
                         while (players.size() < MIN_PLAYERS) {
                             try {
                                 sendMessage("Aguardando outro jogador...");
@@ -149,7 +170,9 @@ class Server {
                 e.printStackTrace();
             } finally {
                 try {
+                    broadcastMessage("Jogador '" + this.playerName + "' desconectado. Aguardando Outro Jogador...");
                     socket.close();
+                    players.remove(this);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
