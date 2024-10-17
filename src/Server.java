@@ -170,7 +170,7 @@ class Server {
                 e.printStackTrace();
             } finally {
                 try {
-                    broadcastMessage("Jogador '" + this.playerName + "' desconectado. Aguardando Outro Jogador...");
+                    broadcastMessage("Jogador '" + this.playerName + "' desconectado. Aguardando outro jogador...");
                     socket.close();
                     players.remove(this);
                 } catch (IOException e) {
